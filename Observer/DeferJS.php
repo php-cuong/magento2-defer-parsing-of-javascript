@@ -40,10 +40,11 @@ class DeferJS implements \Magento\Framework\Event\ObserverInterface
                 return false;
             }
 
+            $htmlContent = $this->minifyHtml($htmlContent);
+            $htmlContent = $this->moveJavascriptToFooter($htmlContent);
+
             // Set the body with the new HTML content
-            $response->setBody(
-                $this->moveJavascriptToFooter($htmlContent)
-            );
+            $response->setBody($htmlContent);
         }
     }
 
@@ -62,5 +63,65 @@ class DeferJS implements \Magento\Framework\Event\ObserverInterface
         $htmlContent = preg_replace($conditionalJsPattern, '', $htmlContent);
         $htmlContent = str_replace('</body>', $_js_if.'</body>', $htmlContent);
         return $htmlContent;
+    }
+
+    /**
+     * Method calls compressing the HTML before rendering.
+     *
+     * @param string $htmlContent
+     * @return string
+     */
+    private function minifyHtml($htmlContent)
+    {
+        $uncompressed = strlen($htmlContent);
+        $pattern = '/<(?<script>script).*?<\/script\s*>|<(?<style>style).*?<\/style\s*>|<!(?<comment>--).*?-->|<(?<tag>[\/\w.:-]*)(?:".*?"|\'.*?\'|[^\'">]+)*>|(?<text>((<[^!\/\w.:-])?[^<]*)+)|/si';
+        preg_match_all($pattern, $htmlContent, $matches, PREG_SET_ORDER);
+        $overriding = false;
+        $raw_tag = false;
+        // Variable reused for output
+        $result = '';
+        foreach ($matches as $token) {
+            $tag = isset($token['tag']) ? strtolower($token['tag']) : null;
+            $content = $token[0];
+            if (is_null($tag)) {
+                if (!empty($token['script']) || !empty($token['style'])) {
+                    $strip = true;
+                }
+            } else {
+                if ($tag == 'pre' || $tag == 'textarea') {
+                    $raw_tag = $tag;
+                } else if ($tag == '/pre' || $tag == '/textarea') {
+                    $raw_tag = false;
+                } else {
+                    if ($raw_tag || $overriding) {
+                        $strip = false;
+                    } else {
+                        $strip = true;
+                        // Remove any empty attributes, except:
+                        // action, alt, content, src
+                        $content = preg_replace('/(\s+)(\w++(?<!\baction|\balt|\bamp|\bcontent|\bsrc)="")/', '$1', $content);
+                        // Remove any space before the end of self-closing XHTML tags
+                        $content = str_replace(' />', '/>', $content);
+                        $content = str_replace('" >', '">', $content);
+                    }
+                }
+            }
+            $content = str_replace("\t", ' ', $content);
+            $content = str_replace("\n", '', $content);
+            $content = str_replace("\r", '', $content);
+            while (stristr($content, '  ')) {
+                $content = str_replace('  ', ' ', $content);
+            }
+            $result .= $content;
+        }
+
+        $result = str_replace('>  <', '><', $result);
+        $result = str_replace('> <', '><', $result);
+        // Add the command codes to bottom
+        $compressed = strlen($result);
+        $savings = ($uncompressed - $compressed) / $uncompressed * 100;
+        $savings = round($savings, 2);
+        $result .= '<!--HTML compressed by PHPCuong, you can contact me via Skype: cuongnq87 or the Fanpage: https://www.facebook.com/giaphugroupcom, HTML size saved ' . $savings . '%. From ' . $uncompressed . ' bytes, now ' . $compressed . ' bytes-->';
+        return $result;
     }
 }
