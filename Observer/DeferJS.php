@@ -121,7 +121,6 @@ class DeferJS implements \Magento\Framework\Event\ObserverInterface
         $compressed = strlen($result);
         $savings = ($uncompressed - $compressed) / $uncompressed * 100;
         $savings = round($savings, 2);
-        $result .= '<!--HTML compressed by PHPCuong, you can contact me via Skype: cuongnq87 or the Fanpage: https://www.facebook.com/giaphugroupcom, HTML size saved ' . $savings . '%. From ' . $uncompressed . ' bytes, now ' . $compressed . ' bytes-->';
         return $result;
     }
 }
